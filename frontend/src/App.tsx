@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AppShell } from './components/layout/AppShell'
 import type { NavigationLabel } from './components/layout/Sidebar'
+import { SubscriptionCard } from './features/subscription/SubscriptionCard'
 
 const pageCopy: Record<NavigationLabel, { title: string; description: string }> = {
   总览: {
@@ -35,7 +36,9 @@ function App() {
       onNavigate={setActiveItem}
       pageTitle={currentPage.title}
       pageDescription={currentPage.description}
-    />
+    >
+      {activeItem === '总览' ? <SubscriptionCard /> : null}
+    </AppShell>
   )
 }
 

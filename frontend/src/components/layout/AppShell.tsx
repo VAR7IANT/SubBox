@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { NavigationLabel } from './Sidebar'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
@@ -7,6 +8,7 @@ type AppShellProps = {
   onNavigate: (label: NavigationLabel) => void
   pageTitle: string
   pageDescription: string
+  children?: ReactNode
 }
 
 function AreaPlaceholder({
@@ -36,7 +38,7 @@ function AreaPlaceholder({
   )
 }
 
-function MainSection({ activeItem }: { activeItem: NavigationLabel }) {
+function MainSection({ activeItem, children }: { activeItem: NavigationLabel; children: ReactNode }) {
   const isOverview = activeItem === '总览'
 
   return (
@@ -58,17 +60,19 @@ function MainSection({ activeItem }: { activeItem: NavigationLabel }) {
             </p>
           </div>
           <div className="inline-flex w-fit items-center rounded-full bg-cream px-4 py-2 text-xs font-medium text-warm-muted">
-            Task 002
+            {isOverview ? 'Task 003' : 'Task 002'}
           </div>
         </div>
       </section>
 
       <section aria-label="后续功能区域" className="mt-6 grid gap-5 md:grid-cols-2">
-        <AreaPlaceholder
-          eyebrow="Coming next"
-          title="订阅区域"
-          description="为稳定订阅 URL 与相关操作保留布局位置。"
-        />
+        {isOverview && children ? children : (
+          <AreaPlaceholder
+            eyebrow="Coming next"
+            title="订阅区域"
+            description="为稳定订阅 URL 与相关操作保留布局位置。"
+          />
+        )}
         <AreaPlaceholder
           eyebrow="Coming next"
           title="节点区域"
@@ -84,13 +88,14 @@ export function AppShell({
   onNavigate,
   pageTitle,
   pageDescription,
+  children,
 }: AppShellProps) {
   return (
     <div className="min-h-screen bg-cream text-ink">
       <Sidebar activeItem={activeItem} onNavigate={onNavigate} />
       <div className="min-h-screen lg:pl-[248px]">
         <Header title={pageTitle} description={pageDescription} />
-        <MainSection activeItem={activeItem} />
+        <MainSection activeItem={activeItem}>{children}</MainSection>
       </div>
     </div>
   )
