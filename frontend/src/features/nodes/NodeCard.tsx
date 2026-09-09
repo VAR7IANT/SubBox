@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { ChangePortDialog, type PortEditValues } from './ChangePortDialog'
 import { getMockClientLink } from './mockNodes'
 import { ProtocolBadge } from './ProtocolBadge'
 import type { NodeFixture } from './types'
@@ -10,6 +11,7 @@ type Feedback = {
 
 type NodeCardProps = {
   node: NodeFixture
+  onPortChange: (nodeId: string, ports: PortEditValues) => void
 }
 
 async function copyText(text: string) {
@@ -113,8 +115,9 @@ function PortValue({ label, value, description }: { label: string; value: number
   )
 }
 
-export function NodeCard({ node }: NodeCardProps) {
+export function NodeCard({ node, onPortChange }: NodeCardProps) {
   const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [isPortDialogOpen, setIsPortDialogOpen] = useState(false)
   const hasNatMapping = node.listen_port !== node.public_port
   const clientLink = getMockClientLink(node)
 
@@ -124,6 +127,23 @@ export function NodeCard({ node }: NodeCardProps) {
       setFeedback({ tone: 'success', message: `客户端链接已复制：${node.host}:${node.public_port}` })
     } catch {
       setFeedback({ tone: 'neutral', message: '复制失败，请检查浏览器剪贴板权限。' })
+    }
+  }
+
+  const handlePortSave = (ports: PortEditValues) => {
+    const listenChanged = ports.listen_port !== node.listen_port
+    const publicChanged = ports.public_port !== node.public_port
+    onPortChange(node.id, ports)
+    setIsPortDialogOpen(false)
+
+    if (listenChanged && publicChanged) {
+      setFeedback({ tone: 'success', message: `端口已更新：listen_port 与 public_port 均已更新。客户端 endpoint 使用 ${node.host}:${ports.public_port}。` })
+    } else if (listenChanged) {
+      setFeedback({ tone: 'success', message: `端口已更新：Sing-box listener 改为 ${ports.listen_port}，public_port 保持 ${ports.public_port}，客户端 endpoint 不变。` })
+    } else if (publicChanged) {
+      setFeedback({ tone: 'success', message: `端口已更新：仅修改对外映射为 ${ports.public_port}，listen_port 保持 ${ports.listen_port}。客户端 endpoint 已更新为 ${node.host}:${ports.public_port}。` })
+    } else {
+      setFeedback({ tone: 'success', message: '端口未变化，Mock 状态保持不变。' })
     }
   }
 
@@ -197,11 +217,13 @@ export function NodeCard({ node }: NodeCardProps) {
           <EditIcon />
           Edit
         </ActionButton>
-        <ActionButton ariaLabel={`修改 ${node.name} 端口（模拟入口）`} onClick={() => setFeedback({ tone: 'neutral', message: 'Change Port 为入口占位，端口编辑对话框将在 Task 005 实现。' })}>
+        <ActionButton ariaLabel={`修改 ${node.name} 端口`} onClick={() => setIsPortDialogOpen(true)}>
           <PortIcon />
           Change Port
         </ActionButton>
       </div>
+
+      {isPortDialogOpen ? <ChangePortDialog node={node} onCancel={() => setIsPortDialogOpen(false)} onSave={handlePortSave} /> : null}
     </article>
   )
 }

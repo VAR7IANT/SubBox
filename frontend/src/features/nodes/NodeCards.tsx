@@ -1,5 +1,8 @@
+import { useState } from 'react'
+import { type PortEditValues } from './ChangePortDialog'
 import { NodeCard } from './NodeCard'
 import { mockNodes } from './mockNodes'
+import type { NodeFixture } from './types'
 
 type NodeCardsProps = {
   layout?: 'overview' | 'page'
@@ -7,6 +10,13 @@ type NodeCardsProps = {
 
 export function NodeCards({ layout = 'page' }: NodeCardsProps) {
   const isOverview = layout === 'overview'
+  const [nodes, setNodes] = useState<NodeFixture[]>(() => mockNodes.map((node) => ({ ...node })))
+
+  const handlePortChange = (nodeId: string, ports: PortEditValues) => {
+    setNodes((currentNodes) => currentNodes.map((node) => (
+      node.id === nodeId ? { ...node, ...ports } : node
+    )))
+  }
 
   return (
     <section aria-labelledby="nodes-section-title">
@@ -16,10 +26,10 @@ export function NodeCards({ layout = 'page' }: NodeCardsProps) {
           <h2 id="nodes-section-title" className="mt-1.5 text-xl font-semibold tracking-tight text-ink">节点</h2>
           <p className="mt-1.5 text-sm leading-6 text-warm-muted">客户端使用 public_port，Sing-box 本机监听 listen_port。</p>
         </div>
-        <span className="hidden rounded-full bg-cream px-3 py-1.5 text-xs font-semibold text-warm-muted sm:inline-flex">{mockNodes.length} 个节点</span>
+        <span className="hidden rounded-full bg-cream px-3 py-1.5 text-xs font-semibold text-warm-muted sm:inline-flex">{nodes.length} 个节点</span>
       </div>
       <div className={isOverview ? 'space-y-4' : 'grid gap-5 md:grid-cols-2 xl:grid-cols-3'}>
-        {mockNodes.map((node) => <NodeCard key={node.id} node={node} />)}
+        {nodes.map((node) => <NodeCard key={node.id} node={node} onPortChange={handlePortChange} />)}
       </div>
     </section>
   )
