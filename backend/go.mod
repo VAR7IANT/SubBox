@@ -2,7 +2,11 @@ module github.com/VAR7IANT/SubBox/backend
 
 go 1.26
 
-require modernc.org/sqlite v1.58.0
+require (
+	golang.org/x/crypto v0.41.0
+	golang.org/x/term v0.40.0
+	modernc.org/sqlite v1.58.0
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

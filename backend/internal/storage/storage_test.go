@@ -32,6 +32,8 @@ func TestOpenInitializesSecurePersistentState(t *testing.T) {
 		"subscriptions",
 		"settings",
 		"runtime_state",
+		"admin_user",
+		"sessions",
 	} {
 		var found string
 		err := store.DB().QueryRow(
@@ -43,7 +45,7 @@ func TestOpenInitializesSecurePersistentState(t *testing.T) {
 		}
 	}
 
-	for _, table := range []string{"auth", "sessions", "session"} {
+	for _, table := range []string{"auth", "session"} {
 		var count int
 		if err := store.DB().QueryRow(
 			`SELECT count(*) FROM sqlite_master WHERE type = 'table' AND lower(name) = ?`,
@@ -60,8 +62,16 @@ func TestOpenInitializesSecurePersistentState(t *testing.T) {
 	if err := store.DB().QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("migration count = %d, want 1", migrationCount)
+	if migrationCount != 2 {
+		t.Fatalf("migration count = %d, want 2", migrationCount)
+	}
+
+	var minimumVersion, maximumVersion, versionCount int
+	if err := store.DB().QueryRow(`SELECT min(version), max(version), count(*) FROM schema_migrations`).Scan(&minimumVersion, &maximumVersion, &versionCount); err != nil {
+		t.Fatalf("read migration versions: %v", err)
+	}
+	if minimumVersion != 1 || maximumVersion != 2 || versionCount != 2 {
+		t.Fatalf("migration versions = min %d, max %d, count %d; want 1,2", minimumVersion, maximumVersion, versionCount)
 	}
 
 	var foreignKeys int
@@ -97,8 +107,8 @@ func TestOpenIsIdempotentAndPreservesMasterKey(t *testing.T) {
 	if err := second.DB().QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("migration count after repeat = %d, want 1", migrationCount)
+	if migrationCount != 2 {
+		t.Fatalf("migration count after repeat = %d, want 2", migrationCount)
 	}
 }
 
