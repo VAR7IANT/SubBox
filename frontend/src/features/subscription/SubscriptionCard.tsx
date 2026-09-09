@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 
 const MOCK_SUBSCRIPTION_URL = 'https://example.com/sub/q8F3mXk29L'
 const MOCK_INITIAL_UPDATED_AT = '2026-09-09 08:54'
@@ -132,53 +133,21 @@ function ActionButton({
   )
 }
 
-function MockQrCode() {
-  const modules = Array.from({ length: 21 }, (_, row) =>
-    Array.from({ length: 21 }, (_, column) => ({ row, column })),
-  ).flat()
-
-  const isFinderModule = (row: number, column: number, top: number, left: number) => {
-    const finderRow = row - top
-    const finderColumn = column - left
-
-    if (finderRow < 0 || finderRow > 6 || finderColumn < 0 || finderColumn > 6) {
-      return false
-    }
-
-    return (
-      finderRow === 0 ||
-      finderRow === 6 ||
-      finderColumn === 0 ||
-      finderColumn === 6 ||
-      (finderRow >= 2 && finderRow <= 4 && finderColumn >= 2 && finderColumn <= 4)
-    )
-  }
-
-  const isDark = (row: number, column: number) => {
-    if (isFinderModule(row, column, 0, 0) || isFinderModule(row, column, 0, 14) || isFinderModule(row, column, 14, 0)) {
-      return true
-    }
-
-    if (row === 6 || column === 6) {
-      return (row + column) % 2 === 0
-    }
-
-    return (row * 17 + column * 29 + row * column + 5) % 7 < 3
-  }
-
+function LocalQrCode({ value }: { value: string }) {
   return (
     <div className="flex aspect-square w-full max-w-[220px] items-center justify-center rounded-[26px] border border-[#f2ddcb] bg-[#fffaf4] p-4 shadow-[0_16px_34px_-28px_rgba(166,92,42,0.75)]">
-      <svg
-        viewBox="0 0 21 21"
+      <QRCodeSVG
+        value={value}
+        size={220}
+        level="M"
+        marginSize={4}
+        fgColor="#27313a"
+        bgColor="#ffffff"
         role="img"
-        aria-label="订阅地址 Mock QR 占位图"
-        className="h-full w-full rounded-xl bg-white p-2"
-        shapeRendering="crispEdges"
-      >
-        {modules.map(({ row, column }) =>
-          isDark(row, column) ? <rect key={`${row}-${column}`} x={column} y={row} width="1" height="1" fill="var(--sb-apricot-strong)" /> : null,
-        )}
-      </svg>
+        aria-label="订阅 URL 二维码"
+        title="订阅 URL 二维码"
+        className="h-full w-full max-w-[220px] rounded-xl"
+      />
     </div>
   )
 }
@@ -250,8 +219,8 @@ function SubscriptionQrDialog({
       onClose={onClose}
     >
       <div className="flex flex-col items-center gap-5">
-        <MockQrCode />
-        <p className="rounded-full bg-cream px-3 py-1.5 text-xs font-medium text-warm-muted">Mock QR 占位图 · 本地渲染</p>
+        <LocalQrCode value={MOCK_SUBSCRIPTION_URL} />
+        <p className="rounded-full bg-cream px-3 py-1.5 text-xs font-medium text-warm-muted">本地生成 · 扫码导入订阅</p>
         <div className="w-full rounded-2xl border border-line bg-cream/60 p-4">
           <p className="text-xs font-semibold text-warm-muted">Subscription URL</p>
           <p className="mt-2 break-all font-mono text-sm leading-6 text-ink">{MOCK_SUBSCRIPTION_URL}</p>
