@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sb-cream: #fff8ef;
+  --sb-surface: #fffdf9;
+  --sb-apricot: #f6a66f;
+  --sb-apricot-soft: #fff0e3;
+  --sb-apricot-strong: #ba6a3a;
+  --sb-ink: #27313a;
+  --sb-warm-muted: #91857c;
+  --sb-line: #eee3d8;
+  --sb-success: #4f9961;
+  --sb-success-soft: #edf8ee;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  color: var(--sb-ink);
+  background: var(--sb-cream);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--sb-cream);
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
