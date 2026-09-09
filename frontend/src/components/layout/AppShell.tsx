@@ -9,6 +9,7 @@ type AppShellProps = {
   pageTitle: string
   pageDescription: string
   children?: ReactNode
+  nodeContent?: ReactNode
 }
 
 function AreaPlaceholder({
@@ -38,8 +39,33 @@ function AreaPlaceholder({
   )
 }
 
-function MainSection({ activeItem, children }: { activeItem: NavigationLabel; children: ReactNode }) {
+function MainSection({ activeItem, children, nodeContent }: { activeItem: NavigationLabel; children: ReactNode; nodeContent?: ReactNode }) {
   const isOverview = activeItem === '总览'
+  const isNodesPage = activeItem === '节点'
+  const showNodeContent = isOverview || isNodesPage
+
+  if (isNodesPage) {
+    return (
+      <main className="mx-auto w-full max-w-[1440px] px-5 pb-10 pt-6 sm:px-8 sm:pt-8 xl:px-10">
+        <section aria-labelledby="workspace-title">
+          <div className="flex flex-col gap-4 rounded-[28px] border border-orange-100/80 bg-surface p-6 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-8">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2 text-sm font-medium text-success">
+                <span className="h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+                节点工作区已准备就绪
+              </div>
+              <h2 id="workspace-title" className="mt-4 text-2xl font-semibold tracking-tight text-ink sm:text-[28px]">管理节点与 NAT 端口</h2>
+              <p className="mt-3 text-sm leading-7 text-warm-muted sm:text-base">清楚区分客户端使用的对外端口与 Sing-box 本机监听端口。</p>
+            </div>
+            <span className="inline-flex w-fit items-center rounded-full bg-apricot-soft px-4 py-2 text-xs font-medium text-apricot-strong">Task 004</span>
+          </div>
+        </section>
+        <section aria-label="节点列表" className="mt-6">
+          {nodeContent}
+        </section>
+      </main>
+    )
+  }
 
   return (
     <main className="mx-auto w-full max-w-[1440px] px-5 pb-10 pt-6 sm:px-8 sm:pt-8 xl:px-10">
@@ -60,7 +86,7 @@ function MainSection({ activeItem, children }: { activeItem: NavigationLabel; ch
             </p>
           </div>
           <div className="inline-flex w-fit items-center rounded-full bg-cream px-4 py-2 text-xs font-medium text-warm-muted">
-            {isOverview ? 'Task 003' : 'Task 002'}
+            {isOverview ? 'Task 004' : 'Task 002'}
           </div>
         </div>
       </section>
@@ -73,11 +99,13 @@ function MainSection({ activeItem, children }: { activeItem: NavigationLabel; ch
             description="为稳定订阅 URL 与相关操作保留布局位置。"
           />
         )}
-        <AreaPlaceholder
-          eyebrow="Coming next"
-          title="节点区域"
-          description="为节点列表与 NAT 端口关系保留布局位置。"
-        />
+        {showNodeContent ? nodeContent : (
+          <AreaPlaceholder
+            eyebrow="Coming next"
+            title="节点区域"
+            description="为节点列表与 NAT 端口关系保留布局位置。"
+          />
+        )}
       </section>
     </main>
   )
@@ -89,13 +117,14 @@ export function AppShell({
   pageTitle,
   pageDescription,
   children,
+  nodeContent,
 }: AppShellProps) {
   return (
     <div className="min-h-screen bg-cream text-ink">
       <Sidebar activeItem={activeItem} onNavigate={onNavigate} />
       <div className="min-h-screen lg:pl-[248px]">
         <Header title={pageTitle} description={pageDescription} />
-        <MainSection activeItem={activeItem}>{children}</MainSection>
+        <MainSection activeItem={activeItem} nodeContent={nodeContent}>{children}</MainSection>
       </div>
     </div>
   )
