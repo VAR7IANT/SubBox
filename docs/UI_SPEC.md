@@ -69,6 +69,10 @@ Must include:
 
 Refresh and Rotate must be visually distinct. Rotate should look more deliberate/destructive than Refresh and should require confirmation.
 
+The subscription-card Rotate entry is a launcher for a node-scoped flow: the
+user must select exactly one node, see which credential classes will change,
+and confirm. Phase 1 must not suggest or perform an implicit rotate-all action.
+
 ## Node Card
 
 Each node card should show at minimum:
@@ -87,6 +91,9 @@ Primary actions:
 - Change Port
 
 Optional node-level Rotate can be exposed when the backend contract is ready.
+
+If exposed, node-level Rotate calls the same node-scoped behavior as the
+subscription-card launcher.
 
 ## Port Editing UI
 

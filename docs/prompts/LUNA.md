@@ -76,6 +76,7 @@ Rotate:
 - applies config safely
 - verifies service
 - then refreshes subscription content
+- is node-scoped in Phase 1; never infer rotate-all behavior
 
 Never implement Refresh as Rotate.
 
@@ -89,6 +90,9 @@ Always preserve two distinct fields:
 Sing-box config uses `listen_port`.
 Client URI/subscription uses `public_port`.
 
+Changing only `public_port` is a database + subscription snapshot update. It
+must not run `sing-box check`, rewrite the live config, or restart the service.
+
 ## Backend Safety
 
 Never concatenate user input into shell commands.
@@ -96,6 +100,10 @@ Never concatenate user input into shell commands.
 Never add a generic execution endpoint.
 
 Any live config modification must go through the shared config transaction defined by project docs.
+
+Do not implement a live mutation handler before Sol assigns the shared config
+transaction and security foundations. A SQLite commit failure after live apply
+must be treated as a config transaction failure and rolled back.
 
 ## Development Style
 

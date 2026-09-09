@@ -65,6 +65,12 @@ A subscription is represented by a stable opaque token, for example:
 
 Changing node configuration, ports, or credentials must not automatically change the subscription token.
 
+In Phase 1, “stable URL” means that both the opaque token and `/sub/<token>`
+path remain unchanged across normal operations. Changing the configured public
+base URL is a separate explicit settings action and naturally changes the
+displayed absolute URL; it does not rotate the token. The public endpoint
+always serves the last fully committed subscription snapshot.
+
 ### Refresh
 
 Refresh regenerates subscription output from the current persisted node state. It must not rotate authentication credentials.
@@ -72,6 +78,9 @@ Refresh regenerates subscription output from the current persisted node state. I
 ### Rotate
 
 Rotate changes protocol credentials, safely applies a candidate Sing-box configuration, verifies the service, then updates subscription output.
+
+Phase 1 Rotate is explicit and node-scoped. It does not regenerate the stable
+subscription token.
 
 ## NAT Model
 
@@ -84,6 +93,12 @@ Example:
 - `listen_port = 443`
 - `public_port = 24443`
 - generated client URI uses `24443`.
+
+In Phase 1, `public_port` is declarative metadata supplied by the operator.
+SubBox does not call a VPS provider API and does not create firewall, router,
+UPnP, or NAT rules. The operator owns the actual mapping. Changing
+`listen_port` therefore never assumes the external mapping changed, and
+changing only `public_port` never changes the local listener.
 
 ## UI Direction
 

@@ -86,9 +86,17 @@ means:
 Sing-box server configuration uses `listen_port`.
 Client URIs and subscriptions use `public_port`.
 
+A `public_port`-only change updates SQLite and the subscription snapshot. It
+must not rewrite/restart Sing-box. Phase 1 records operator-managed NAT
+mappings; it does not provision external NAT/firewall rules.
+
 ## Subscription
 
 Subscription URLs must remain stable when nodes change.
+
+The public route serves only the last atomically committed encrypted
+subscription snapshot. The token is stable and recoverable for authenticated
+Copy/QR; it is never stored or logged in plaintext.
 
 ### Refresh
 
@@ -105,11 +113,11 @@ Refresh and Rotate must never be merged into one operation.
 
 Never overwrite the live config without validation.
 
-All changes must use:
+All live config changes must use the shared crash-recoverable transaction:
 
-`validate -> backup -> build candidate -> write temp -> sing-box check -> apply -> restart/reload -> verify`
+`validate -> cross-process lock -> recover -> snapshot -> candidate -> sing-box check -> durable backup/journal -> atomic apply -> restore intended service state -> verify -> commit DB + subscription -> cleanup`
 
-On failure:
+On failure after live apply, including database commit failure:
 
 `rollback -> restore old config -> restore service`
 

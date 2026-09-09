@@ -83,6 +83,10 @@ means:
 Sing-box config uses `listen_port`.
 URI/subscription output uses `public_port`.
 
+A `public_port`-only change is not a Sing-box config mutation and must not
+restart/reload the service. Phase 1 treats NAT as operator-managed declarative
+metadata, not as a provider/firewall automation feature.
+
 Review every relevant Luna change for accidental port-semantic drift.
 
 ## Subscription Model
@@ -93,6 +97,11 @@ A stable opaque subscription token must survive:
 - port changes
 - Refresh
 - Rotate
+
+The authenticated UI must still be able to display the same URL after restart:
+use a lookup hash plus authenticated-encrypted token, never plaintext-only or
+hash-only storage. Publish and serve only complete encrypted subscription
+snapshots.
 
 ### Refresh
 
@@ -111,23 +120,26 @@ Design one shared implementation for all live config changes.
 Target flow:
 
 1. validate input
-2. acquire mutation lock
-3. read current working state
-4. backup live config
-5. build candidate config
-6. write candidate temp file
-7. `sing-box check`
+2. acquire a cross-process mutation lock
+3. recover or reject an incomplete durable transaction
+4. snapshot config, DB revision, and prior service state
+5. build and durably write the candidate
+6. `sing-box check`
+7. write durable backup and prepared journal
 8. atomically replace live config
-9. restart/reload
-10. verify service
-11. commit application state
-12. cleanup
+9. restore intended prior service state and verify
+10. commit application state and subscription snapshot together
+11. cleanup journal/artifacts
 
 Failure after mutation starts must attempt rollback:
 
 - restore previous config
 - restore/restart service
 - verify previous working state
+
+A SQLite commit failure after live apply is a rollback condition. Crash recovery
+uses SQLite old/candidate revision as the commit decision. Manual service
+mutations share the same lock.
 
 Review for concurrency, partial writes, permissions, disk failures, check-success/start-failure, and process interruption.
 
