@@ -1,0 +1,31 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Go
+backend/bin/
+backend/coverage.out
+*.test
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Local build/temp
+.tmp/
+tmp/
