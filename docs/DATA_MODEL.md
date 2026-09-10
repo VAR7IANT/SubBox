@@ -173,12 +173,24 @@ Examples:
 
 ## TLS Material
 
-Hysteria2, TUIC, and AnyTLS require an explicit TLS provisioning/import model
-before their backend adapters are implemented. The protocol schema task must
-lock whether Phase 1 supports imported files, generated certificates, and/or
-ACME; trusted certificate/key paths cannot be arbitrary API input. TLS private
-keys and certificate backups follow the same secret-handling and permission
-rules. Credential Rotate does not rotate TLS material.
+Phase 1 supports only locally imported existing certificate/private-key
+material. A future fixed-purpose, local-only CLI (for example,
+`subbox tls import`) will copy the certificate and private key into
+SubBox-managed trusted storage. The actual managed location is selected by the
+trusted implementation; it is never supplied as an HTTP request or arbitrary
+API path.
+
+Protocol configuration references TLS material only by a canonical logical
+`tls_material_id`. It must not store `/etc/foo/key.pem` or any other
+request-controlled certificate/private-key path. Phase 1 does not support ACME,
+automatic certificate generation, or a remote certificate upload API.
+
+Ordinary credential Rotate changes protocol credentials only and never rotates
+the certificate/private-key material referenced by `tls_material_id`.
+
+TLS private keys and any certificate/private-key backups remain secret
+material and follow the same secret-handling, file-permission, and
+service-account access rules as other SubBox-managed secrets.
 
 Credential storage requires a security review before release. Secrets must never be included in ordinary application logs.
 
