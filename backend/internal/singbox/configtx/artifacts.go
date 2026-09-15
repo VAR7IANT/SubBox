@@ -89,19 +89,28 @@ func (g *LockGuard) CreateBackup(transactionID string, oldSnapshot *ConfigSnapsh
 // temporary, durably writes it, and atomically replaces the live config. The
 // candidate artifact is intentionally retained for journal-driven recovery.
 func (g *LockGuard) InstallCandidate(transactionID string, candidate *ConfigSnapshot) error {
+	_, err := g.InstallCandidateWithOutcome(transactionID, candidate)
+	return err
+}
+
+// InstallCandidateWithOutcome is the status-bearing form of InstallCandidate.
+// liveChanged is true when the atomic rename has happened, including when a
+// post-rename fsync or metadata verification reports an error. The coordinator
+// uses this distinction to decide whether rollback is mandatory.
+func (g *LockGuard) InstallCandidateWithOutcome(transactionID string, candidate *ConfigSnapshot) (liveChanged bool, err error) {
 	done, err := g.beginOperation()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer done()
 	if candidate == nil {
-		return ErrUnsafeFile
+		return false, ErrUnsafeFile
 	}
 	if err := candidate.metadata.validateLive(); err != nil {
-		return err
+		return false, err
 	}
 	if candidate.hash == "" {
-		return ErrUnsafeFile
+		return false, ErrUnsafeFile
 	}
 	return g.installCandidate(transactionID, candidate.hash, candidate.metadata)
 }
@@ -109,16 +118,23 @@ func (g *LockGuard) InstallCandidate(transactionID string, candidate *ConfigSnap
 // InstallJournalCandidate installs the candidate identified by a validated
 // prepared journal, without retaining candidate plaintext in another object.
 func (g *LockGuard) InstallJournalCandidate(journal Journal) error {
+	_, err := g.InstallJournalCandidateWithOutcome(journal)
+	return err
+}
+
+// InstallJournalCandidateWithOutcome is the status-bearing form of
+// InstallJournalCandidate used by crash recovery.
+func (g *LockGuard) InstallJournalCandidateWithOutcome(journal Journal) (liveChanged bool, err error) {
 	done, err := g.beginOperation()
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer done()
 	if err := journal.Validate(); err != nil {
-		return err
+		return false, err
 	}
-	if journal.Phase != PhasePrepared {
-		return ErrInvalidJournal
+	if !candidatePhaseAllowed(journal.Phase) {
+		return false, ErrInvalidJournal
 	}
 	return g.installCandidate(journal.TransactionID, journal.CandidateConfigHash, FileMetadata{
 		Mode: journal.LiveConfigMode,
@@ -127,32 +143,118 @@ func (g *LockGuard) InstallJournalCandidate(journal Journal) error {
 	})
 }
 
-func (g *LockGuard) installCandidate(transactionID, expectedHash string, intended FileMetadata) error {
-	if _, err := canonicalTransactionID(transactionID); err != nil {
+// ValidateJournalCandidate verifies the trusted candidate artifact referenced
+// by a prepared journal without changing the live config. The manager uses
+// this before invoking a checker during crash recovery so a missing or
+// tampered candidate is quarantined without giving the checker an invalid
+// artifact.
+func (g *LockGuard) ValidateJournalCandidate(journal Journal) error {
+	done, err := g.beginOperation()
+	if err != nil {
 		return err
 	}
-	if err := intended.validateLive(); err != nil {
+	defer done()
+	if err := journal.Validate(); err != nil {
 		return err
 	}
-	if !isLowerHexHash(expectedHash) {
+	if !candidatePhaseAllowed(journal.Phase) {
 		return ErrInvalidJournal
+	}
+	return g.validateArtifact(journal.CandidateName, journal.CandidateConfigHash, FileMetadata{
+		Mode: journal.LiveConfigMode,
+		UID:  journal.LiveConfigUID,
+		GID:  journal.LiveConfigGID,
+	}, false)
+}
+
+// VerifyJournalCandidate is a descriptive alias for
+// ValidateJournalCandidate.
+func (g *LockGuard) VerifyJournalCandidate(journal Journal) error {
+	return g.ValidateJournalCandidate(journal)
+}
+
+// ValidateJournalBackup verifies the durable old-config backup referenced by
+// a journal without changing the live config.
+func (g *LockGuard) ValidateJournalBackup(journal Journal) error {
+	done, err := g.beginOperation()
+	if err != nil {
+		return err
+	}
+	defer done()
+	if err := journal.Validate(); err != nil {
+		return err
+	}
+	if err := ensureTransactionDirectories(g.layout); err != nil {
+		return err
+	}
+	backupPath := g.layout.BackupPath(journal.TransactionID)
+	if backupPath == "" || filepath.Base(backupPath) != journal.BackupName {
+		return ErrUnsafePath
+	}
+	content, metadata, err := readExistingArtifact(backupPath, MaxConfigBytes)
+	if err != nil {
+		return err
+	}
+	defer clear(content)
+	if metadata.Mode != 0600 || metadata.UID != journal.LiveConfigUID || metadata.GID != journal.LiveConfigGID {
+		return ErrUnsafePermissions
+	}
+	if hashConfig(content) != journal.OldConfigHash {
+		return ErrUnsafeFile
+	}
+	return nil
+}
+
+// VerifyJournalBackup is a descriptive alias for ValidateJournalBackup.
+func (g *LockGuard) VerifyJournalBackup(journal Journal) error {
+	return g.ValidateJournalBackup(journal)
+}
+
+// RestoreJournalBackup restores the old config recorded by a prepared
+// journal. The backup remains in place for retention and future forensic
+// recovery; it is copied through a same-directory apply temporary rather than
+// renamed directly over the live config.
+func (g *LockGuard) RestoreJournalBackup(journal Journal) error {
+	done, err := g.beginOperation()
+	if err != nil {
+		return err
+	}
+	defer done()
+	if err := journal.Validate(); err != nil {
+		return err
+	}
+	if journal.Phase == PhaseStateCommitted || journal.Phase == PhaseRollbackFailed || journal.Phase == PhaseRecoveryRequired {
+		return ErrInvalidJournal
+	}
+	if err := ensureTransactionDirectories(g.layout); err != nil {
+		return err
 	}
 	if err := ensureLiveDirectory(g.layout); err != nil {
 		return err
 	}
 
-	candidatePath := g.layout.CandidatePath(transactionID)
-	candidateContent, candidateMetadata, err := readExistingArtifact(candidatePath, MaxConfigBytes)
+	backupPath := g.layout.BackupPath(journal.TransactionID)
+	if backupPath == "" || filepath.Base(backupPath) != journal.BackupName {
+		return ErrUnsafePath
+	}
+	backupContent, backupMetadata, err := readExistingArtifact(backupPath, MaxConfigBytes)
 	if err != nil {
 		return err
 	}
-	if hashConfig(candidateContent) != expectedHash || candidateMetadata != intended {
-		clear(candidateContent)
+	defer clear(backupContent)
+	if backupMetadata.Mode != 0600 || backupMetadata.UID != journal.LiveConfigUID || backupMetadata.GID != journal.LiveConfigGID {
+		return ErrUnsafePermissions
+	}
+	if hashConfig(backupContent) != journal.OldConfigHash {
 		return ErrUnsafeFile
 	}
 
-	applyPath, applyFile, err := g.createApplyTemp(transactionID, candidateContent, intended)
-	clear(candidateContent)
+	intended := FileMetadata{
+		Mode: journal.LiveConfigMode,
+		UID:  journal.LiveConfigUID,
+		GID:  journal.LiveConfigGID,
+	}
+	applyPath, applyFile, err := g.createApplyTemp(journal.TransactionID, backupContent, intended)
 	if err != nil {
 		return err
 	}
@@ -164,14 +266,11 @@ func (g *LockGuard) installCandidate(transactionID, expectedHash string, intende
 	}()
 
 	if err := fsyncAndClose(applyFile); err != nil {
-		return fmt.Errorf("durably write apply temporary: %w", err)
+		return fmt.Errorf("durably write restore temporary: %w", err)
 	}
 	if err := fsyncDirectory(filepath.Dir(g.layout.LiveConfigPath)); err != nil {
 		return fmt.Errorf("sync live config directory: %w", err)
 	}
-
-	// Recheck the target immediately before replacement. A symlink target is
-	// never accepted, even though rename itself does not follow it.
 	if err := verifyLiveTarget(g.layout.LiveConfigPath); err != nil {
 		return err
 	}
@@ -180,12 +279,101 @@ func (g *LockGuard) installCandidate(transactionID, expectedHash string, intende
 	}
 	removeApply = false
 	if err := fsyncDirectory(filepath.Dir(g.layout.LiveConfigPath)); err != nil {
-		return fmt.Errorf("%w: sync replaced live config directory: %v", ErrAtomicReplace, err)
+		return fmt.Errorf("%w: sync restored live config directory: %v", ErrAtomicReplace, err)
 	}
 	if err := verifyLiveMetadata(g.layout.LiveConfigPath, intended); err != nil {
-		return fmt.Errorf("%w: verify replaced live config: %v", ErrAtomicReplace, err)
+		return fmt.Errorf("%w: verify restored live config: %v", ErrAtomicReplace, err)
 	}
 	return nil
+}
+
+func (g *LockGuard) validateArtifact(name, expectedHash string, intended FileMetadata, backup bool) error {
+	if name == "" || filepath.Base(name) != name {
+		return ErrUnsafePath
+	}
+	path := filepath.Join(filepath.Dir(g.layout.LiveConfigPath), name)
+	if backup {
+		path = filepath.Join(g.layout.BackupDir, name)
+	}
+	content, metadata, err := readExistingArtifact(path, MaxConfigBytes)
+	if err != nil {
+		return err
+	}
+	defer clear(content)
+	if hashConfig(content) != expectedHash || metadata != intended {
+		return ErrUnsafeFile
+	}
+	return nil
+}
+
+func (g *LockGuard) installCandidate(transactionID, expectedHash string, intended FileMetadata) (bool, error) {
+	if _, err := canonicalTransactionID(transactionID); err != nil {
+		return false, err
+	}
+	if err := intended.validateLive(); err != nil {
+		return false, err
+	}
+	if !isLowerHexHash(expectedHash) {
+		return false, ErrInvalidJournal
+	}
+	if err := ensureLiveDirectory(g.layout); err != nil {
+		return false, err
+	}
+
+	candidatePath := g.layout.CandidatePath(transactionID)
+	candidateContent, candidateMetadata, err := readExistingArtifact(candidatePath, MaxConfigBytes)
+	if err != nil {
+		return false, err
+	}
+	if hashConfig(candidateContent) != expectedHash || candidateMetadata != intended {
+		clear(candidateContent)
+		return false, ErrUnsafeFile
+	}
+
+	applyPath, applyFile, err := g.createApplyTemp(transactionID, candidateContent, intended)
+	clear(candidateContent)
+	if err != nil {
+		return false, err
+	}
+	removeApply := true
+	defer func() {
+		if removeApply {
+			_ = os.Remove(applyPath)
+		}
+	}()
+
+	if err := fsyncAndClose(applyFile); err != nil {
+		return false, fmt.Errorf("durably write apply temporary: %w", err)
+	}
+	if err := fsyncDirectory(filepath.Dir(g.layout.LiveConfigPath)); err != nil {
+		return false, fmt.Errorf("sync live config directory: %w", err)
+	}
+
+	// Recheck the target immediately before replacement. A symlink target is
+	// never accepted, even though rename itself does not follow it.
+	if err := verifyLiveTarget(g.layout.LiveConfigPath); err != nil {
+		return false, err
+	}
+	if err := os.Rename(applyPath, g.layout.LiveConfigPath); err != nil {
+		return false, fmt.Errorf("%w: %v", ErrAtomicReplace, err)
+	}
+	removeApply = false
+	if err := fsyncDirectory(filepath.Dir(g.layout.LiveConfigPath)); err != nil {
+		return true, fmt.Errorf("%w: sync replaced live config directory: %v", ErrAtomicReplace, err)
+	}
+	if err := verifyLiveMetadata(g.layout.LiveConfigPath, intended); err != nil {
+		return true, fmt.Errorf("%w: verify replaced live config: %v", ErrAtomicReplace, err)
+	}
+	return true, nil
+}
+
+func candidatePhaseAllowed(phase JournalPhase) bool {
+	switch phase {
+	case PhasePrepared, PhaseLiveApplied, PhaseStateCommitted:
+		return true
+	default:
+		return false
+	}
 }
 
 func (g *LockGuard) createApplyTemp(transactionID string, content []byte, metadata FileMetadata) (string, *os.File, error) {

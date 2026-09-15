@@ -98,6 +98,16 @@ func NewWorkspace(layout Layout) *Workspace {
 	return &Workspace{layout: layout}
 }
 
+// Layout returns the trusted layout retained by the workspace. It is useful
+// to application services that need to keep the same layout while delegating
+// lock acquisition to configtx.
+func (w *Workspace) Layout() Layout {
+	if w == nil {
+		return Layout{}
+	}
+	return w.layout
+}
+
 func (w *Workspace) Acquire(ctx context.Context) (*LockGuard, error) {
 	if w == nil {
 		return nil, ErrUnsafePath

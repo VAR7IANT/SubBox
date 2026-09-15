@@ -13,16 +13,23 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// JournalPhase is deliberately limited to the two phases needed by the
-// filesystem primitives. SQLite commit state is not represented here.
+// JournalPhase is the durable state machine for a config transaction. Every
+// phase transition is written and synced before the coordinator starts the
+// next operation that depends on it.
 type JournalPhase string
 
 const (
-	PhasePrepared       JournalPhase = "prepared"
-	PhaseRollbackFailed JournalPhase = "rollback_failed"
+	PhasePrepared         JournalPhase = "prepared"
+	PhaseLiveApplied      JournalPhase = "live_applied"
+	PhaseStateCommitted   JournalPhase = "state_committed"
+	PhaseRollbackFailed   JournalPhase = "rollback_failed"
+	PhaseRecoveryRequired JournalPhase = "recovery_required"
 	// Descriptive aliases for callers that prefer the type name in constants.
-	JournalPhasePrepared       = PhasePrepared
-	JournalPhaseRollbackFailed = PhaseRollbackFailed
+	JournalPhasePrepared         = PhasePrepared
+	JournalPhaseLiveApplied      = PhaseLiveApplied
+	JournalPhaseStateCommitted   = PhaseStateCommitted
+	JournalPhaseRollbackFailed   = PhaseRollbackFailed
+	JournalPhaseRecoveryRequired = PhaseRecoveryRequired
 )
 
 const maxInt64Value = int64(^uint64(0) >> 1)
@@ -52,7 +59,7 @@ func (j Journal) Validate() error {
 	if _, err := canonicalTransactionID(j.TransactionID); err != nil {
 		return ErrInvalidJournal
 	}
-	if j.Phase != PhasePrepared && j.Phase != PhaseRollbackFailed {
+	if !validJournalPhase(j.Phase) {
 		return ErrInvalidJournal
 	}
 	if !isLowerHexHash(j.OldConfigHash) || !isLowerHexHash(j.CandidateConfigHash) {
@@ -433,12 +440,11 @@ func (g *LockGuard) UpdateJournalPhase(phase JournalPhase) error {
 	if err != nil {
 		return err
 	}
-	if phase == PhaseRollbackFailed {
-		if journal.Phase != PhasePrepared && journal.Phase != PhaseRollbackFailed {
-			return ErrInvalidJournal
-		}
-	} else if phase != PhasePrepared || journal.Phase != PhasePrepared {
+	if !validJournalPhase(phase) {
 		return ErrInvalidJournal
+	}
+	if !journalPhaseTransitionAllowed(journal.Phase, phase) {
+		return errors.Join(ErrInvalidJournal, ErrInvalidJournalTransition)
 	}
 	journal.Phase = phase
 	encoded, err := marshalJournal(journal)
@@ -449,6 +455,54 @@ func (g *LockGuard) UpdateJournalPhase(phase JournalPhase) error {
 		return err
 	}
 	return g.replaceJournal(encoded, journal.TransactionID)
+}
+
+// MarkLiveApplied records that the candidate has replaced the live config.
+// It is intentionally a forward-only transition from prepared.
+func (g *LockGuard) MarkLiveApplied() error {
+	return g.UpdateJournalPhase(PhaseLiveApplied)
+}
+
+// MarkStateCommitted records that the atomic application-state and
+// subscription commit has returned success. Cleanup is only allowed after
+// this durable marker is in place.
+func (g *LockGuard) MarkStateCommitted() error {
+	return g.UpdateJournalPhase(PhaseStateCommitted)
+}
+
+// MarkRollbackFailed leaves a durable operator-intervention marker in place.
+func (g *LockGuard) MarkRollbackFailed() error {
+	return g.UpdateJournalPhase(PhaseRollbackFailed)
+}
+
+func validJournalPhase(phase JournalPhase) bool {
+	switch phase {
+	case PhasePrepared, PhaseLiveApplied, PhaseStateCommitted, PhaseRollbackFailed, PhaseRecoveryRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+func journalPhaseTransitionAllowed(from, to JournalPhase) bool {
+	if !validJournalPhase(from) || !validJournalPhase(to) {
+		return false
+	}
+	if from == to {
+		return true
+	}
+	switch to {
+	case PhaseLiveApplied:
+		return from == PhasePrepared
+	case PhaseStateCommitted:
+		return from == PhaseLiveApplied
+	case PhaseRollbackFailed:
+		return from == PhasePrepared || from == PhaseLiveApplied
+	case PhaseRecoveryRequired:
+		return from != PhaseRollbackFailed && from != PhaseRecoveryRequired
+	default:
+		return false
+	}
 }
 
 // SetJournalPhase is a descriptive alias for UpdateJournalPhase.

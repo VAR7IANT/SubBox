@@ -14,6 +14,7 @@ var (
 	ErrMalformedJournal          = errors.New("malformed config transaction journal")
 	ErrUnsupportedJournalVersion = errors.New("unsupported config transaction journal version")
 	ErrInvalidJournal            = errors.New("invalid config transaction journal")
+	ErrInvalidJournalTransition  = errors.New("invalid config transaction journal phase transition")
 	ErrArtifactExists            = errors.New("config transaction artifact already exists")
 	ErrArtifactNotFound          = errors.New("config transaction artifact not found")
 	ErrAtomicReplace             = errors.New("atomic config replacement failed")
